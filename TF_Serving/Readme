@@ -1,0 +1,153 @@
+Consolidated steps to serve multiple object detection models through tf serving:
+
+Pre-requisite:
+As I am building an object detection model, I used resources available in the tensorflow object detetion API.
+
+Main steps involved:
+1. Build and train Neural Network model and generate frozen inference graph
+2. Save the trained model to exportable or servable format
+3. Create tensorflow serving environment inside docker
+4. Create client to send request to the served model to make inference on a test image
+
+Detailed steps:
+
+1. Build and train your model and generate frozen inference graph
+
+- I have used two models in this example as my objective is to serve multiple models through tensorflow serving:
+Faster RCNN Inception v2
+SSSD Inception v2
+
+- Once a model is trained following 4 files get generated:
+i.checkpoint
+ii.model.ckpt.data
+iii.model.ckpt.index
+iv.model.ckpt.meta
+
+With these files inference can be done on the local system where the model was trained but not on the production environment.
+We need to create a portable format (.pb format) of the trained model post training completion.
+
+2. Following is the procedure to save the trained model in an exportable or servable format:
+
+- We need to modify the exporter.py file available with the object detection API to make the trained model ready for serving.
+TensorFlow Serving provides SavedModelBuild class to save the model as Protobuf(.pb format) which is portable.
+
+I have uploaded the modified exporter.py in my github repository and commented out the portion needed to be modified when you use it for your model.
+
+- Once export is done, the model protobuff (saved_model.pb) which contains the model architecture, and the variables directory which contains the weights 
+for the model will be generated and your model will be ready to be hosted.
+
+3. Create tensorflow serving environment using docker:
+
+- Configure docker:
+I referred the following blog to configure docker in my system:
+https://towardsdatascience.com/how-to-deploy-machine-learning-models-with-tensorflow-part-2-containerize-it-db0ad7ca35a7
+
+Now, I am consolidating the steps I undertook to serve multiple object detection models through tensorflow serving in docker:
+
+* Run the docker container for tensorflow serving
+* Deploy the models in docker:
+- In the shell of the running container execute the following command to create a folder to hold your models
+mkdir <name of folder inside docker container where you would like to place your model>
+
+ - Copy the model protobuf from your local system to docker container using the following command:
+Run this command from your local(from outside docker)
+docker cp ./<name of folder containing saved_model.pb file and variables folder> <name of docker container>:/<name of folder inside docker container where you would like to place your model>
+
+- Create a config file in your local system specifying model name and base location of the model protobuff in the docker container
+I have served two models thus my config file looked like this:
+model_config_list: {
+  config: {
+    name:  "faster_rcnn_inception_v2_coco",
+    base_path:  "/tensorflow-serving/models/faster_rcnn_inception_v2_coco",
+    model_platform: "tensorflow",
+    model_version_policy: {
+        all: {}
+    }
+  },
+  config: {
+    name:  "ssd_inception_v2_coco",
+    base_path:  "/tensorflow-serving/models/ssd_inception_v2_coco",
+    model_platform: "tensorflow",
+    model_version_policy: {
+        all: {}
+    }
+  }
+}
+
+- Next copy this config file from your local to the docker container:
+command:
+docker cp ./<name of folder containing config file in your local> <name of docker container>:/<name of folder inside docker container where you would like to place your config file>
+
+- Next we need to start the tensorflow serving using the following command:
+#Generic command:
+tensorflow_model_server --port=port-numbers --model_name=your-model-name --model_base_path=your_model_base_path
+
+- As I am serving multiple models, I used model config file which contains my models' names and their respective base locations:
+tensorflow_model_server --port=9000 --model_config_file=<path to the config file in docker container> &> log &  
+
+- The logs will get captured in the 'log' file and opening this file would show you if the tf serving started running successfully.
+If the tf serving started running successfully, the log should show the following:
+'Running ModelServer at 0.0.0.0:9000 …'
+
+Note: Here I referred to the path to config file as I am serving multiple models and related information is stored in the config file.
+
+- In case of serving single model we need to refer to the path where our model protobuff is stored in the container:
+tensorflow_model_server --port=9000 --model_name=<name of model> --model_base_path=<path to the model in docker container> &> log &
+
+4. Create client which would send request to the served model to make inference on a test image:
+
+Tensorflow server implements a gRPC interface which requires a client to communicate over gRPC with our model.
+Accepted format of client is a python file and not any request issued from any browser.
+
+- Thus we need to create client.py file; code specific to client file for object detection model is given in the
+object_detection_client_multiple_models.py in my github repository
+
+- TensorFlow serving request can be of the following types:
+Classification, Prediction and Regression.
+Of which for my specific purpose of object detection, I am using Prediction request.
+
+Prediction : Uses prediction RPC API that accepts an input tensor (eg. image) and outputs bounding_boxes, classes, scores, etc.
+
+- To make use of these APIs, we need the prediction protobufs which are available in the 'api' folder of TensorFlow serving git repository(link given in the 'reference' section below)
+ and generate Python files from those Protobuf’s. 
+
+Running the following command will do so:
+
+python -m grpc.tools.protoc ./tensorflow_serving/apis/*.proto --python_out=<path to folder containing savedmodel protobuff and variables > 
+--grpc_python_out=<path to folder containing savedmodel protobuff and variables> --proto_path=.
+
+- Now the final step is to trigger a client request using the following command:
+python <path to the client file in your local>/object_detection_client.py --server=172.17.0.2:9000 --model_name=<name of the model you want to be called> --input_image=<path to input test image in your local>/img1.jpg --output_directory=<path to output the inference which is an image with inference and bounding box> --label_map=<path to labelmap.pbtxt file in your local>/label_map.pbtxt
+
+Additional Information:
+Requirement: Serving single model through tensorflow serving
+
+The overall process is more or less same except the following changes:
+
+- In this case it is not necessary to create config file for serving just one model instead just copy the model protobuff in docker container
+
+- Start the serving using the following command:
+tensorflow_model_server --port=9000 --model_name=<name of the model> --model_base_path=<path to the config file in docker container> &> log &
+
+- client file for this requirement will be slightly different from the one for multiple models;please refer single_model_client.py in my github repository 
+
+- Finally the command to trigger client request should also be different:
+python single_model_client.py --server=172.17.0.2:9000 --image_path=./<path to test image in your local>/image_1.jpg
+
+
+Requirement: Serve multiple VERSIONs of one model through tensorflow serving
+
+Again the overall process is more or less same except the following changes:
+
+- Again creation of config file is not necessary instead copy different versions of model protobuffs in different folders in the docker container; better to
+give the folder name same as the version name
+
+- The client file needs to be modified to accomodate model version; you can refer to the multiple_versions_client.py file in the github repository
+
+- Finally the command to trigger client request should also be different:
+python multiple_versions_client.py --server=172.17.0.2:9000 --model_version=<version to run>
+
+References:
+https://github.com/tensorflow/models/issues/1988
+https://towardsdatascience.com/how-to-deploy-machine-learning-models-with-tensorflow-part-2-containerize-it-db0ad7ca35a7
+https://github.com/tensorflow/serving/tree/master/tensorflow_serving
