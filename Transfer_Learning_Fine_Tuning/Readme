@@ -1,5 +1,7 @@
 Creating a Deep Neural Network Model utilising Pre-trained model
 
+Use Case: Detection of Differently Colored but Identically Shaped Objects
+
 Framework used: Keras
 
 High Level steps Involved:
