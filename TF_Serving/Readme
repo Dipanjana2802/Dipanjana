@@ -1,4 +1,4 @@
-##Consolidated steps to serve multiple object detection models through tf serving:
+Consolidated steps to serve multiple object detection models through tf serving:
 
 Pre-requisite:
 As I am building an object detection model, I used resources available in the tensorflow object detetion API.
