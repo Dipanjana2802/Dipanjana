@@ -1,0 +1,10 @@
+Multi-Label Image Classification Model
+
+The objective of this exercise is to identify multiple different objects of interest in any given frame
+
+The uniqueness of building a Multi-Label Image Classification Model lies in its data preparation step:
+- A Dataframe needs to be created; format of the dataframe can be found in multi_image_labels.csv
+- ImageDataGenerator class from the Keras API then be used to read data from the dataframe
+
+The remaining model training steps are as usual.
+Detailed code with step wise explanation is provided in MultiLabel_Processing.py

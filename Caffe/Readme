@@ -1,0 +1,142 @@
+Environment Setup - Building - Training a Neural Network using Caffe
+
+There are 4 steps in training a Neural Network using Caffe:
+
+A - Data preparation
+B - Model definition
+C - Solver definition
+D - Model training
+
+Once training is completed, the trained caffe model will be generated in a file with .caffemodel extension
+
+Pre-Requisite and Environment Set Up:
+
+[This is how I set up]
+1. Install anaconda
+
+2. Create an anaconda environment
+command:
+conda create --name <env-name>
+
+3.Set up caffe in this environment -- separate conda environment is useful in this case as it wont interfare with already installed packages and softwares in your system
+
+4. Pre-processing steps:
+Install the dependencies following the below commands:
+
+OpenBLAS:
+sudo apt-get install libopenblas-dev
+
+boost:
+sudo apt-get install libboost-all-dev
+
+OpenCV:
+conda install opencv
+sudo apt-get install libopencv-dev
+
+Install other dependencies:
+sudo apt-get install libleveldb-dev libsnappy-dev libhdf5-serial-dev
+
+sudo apt-get install libgflags-dev libgoogle-glog-dev liblmdb-dev
+
+sudo apt-get install protobuf-compiler libprotobuf-dev
+
+conda install -c https://conda.anaconda.org/anaconda protobuf
+
+5.Now install caffe using the following command:
+conda install -c conda-forge caffe
+
+6. How to ensure if caffe is installed successfully?
+In terminal start a python prompt and check running the below command if any error is coming:
+import caffe
+
+Also in your local system go to the following directory and check wheteher following files are available:
+- compute_image_mean
+- draw_net
+
+These files will be available in the bin folder of your conda environment (try searching with command: whereis compute_image_mean)
+In my case it is available in: /home/dipanjana/anaconda3/envs/caffe-conda/bin/compute_image_mean
+
+7. also you need to download the caffe-master repository from the following location:
+https://github.com/BVLC/caffe
+
+Once the environment is set up the main steps are to be followed
+
+A - Data Preparation
+- capture images of different categories you would like your model to be trained with
+- make a common folder 'images'
+- inside that, create folder for different categories like 'cat', 'dog', 'human', 'car' etc and put respective images
+- annotate each image (use labelimg)
+- create a folder named 'Annotation' and inside that create four separate folders: 'cat', 'dog', 'human', 'car' and put annotations for respective categories there
+- with these images and annotations we will create two files: train.txt and val.txt.
+- to generate train.txt and val.txt, run the data_prep.py file given in my git repository; you need to modify the paths for your input and output data location inside the data_prep.py
+- each of the train.txt and val.txt will contain paths to images and class number from train and test data respectively.
+Part of file can look like following:
+/<path to image folder>/image1.jpg 0
+/<path to image folder>/image2.jpg 3
+/<path to image folder>/image3.jpg 1
+/<path to image folder>/image4.jpg 2
+/<path to image folder>/image5.jpg 1
+...
+...
+/<path to image folder>/imageN.jpg N-1
+
+- Next we need to compute image mean for our dataset in order to use it during training. This is an architectural specification that was derived from experimentation
+by researchers.
+This mean image will be subtracted from each image to boost the performance of the network. Caffe provides a way to compute the image mean directly.
+As a pre-requisite to that, we need to generate the lmdb database for our training and validation images so that Caffe can use it to generate the mean image.
+
+- Below is the procedure to create .lmdb files for both train image set and validation image sets:
+You need to modify and then run the create_imagenet.sh file available in the caffe-master folder: caffe/examples/imagenet/create_imagenet.sh
+Refer: https://github.com/BVLC/caffe
+
+- Go to the folder (caffe-master/examples/imagenet/) where the create_imagenet.sh file is there and run create_imagenet.sh
+command: sh create_imagenet.sh
+Once the execution is successful two folders: train_lmdb and val_lmdb will generate; each of which would contain data.mdb and lock.mdb files
+
+- Once lmdb files are generated, mean computation can be carried out by running the make_imagenet_mean.sh file from caffe-master folder
+(location: /caffe-master/examples/imagenet/)
+Modify the make_imagenet_mean.sh file as per your data location and run.
+Upon successful execution of make_imagenet_mean.sh, mean.binaryproto file will be generated
+
+- Once mean.binaryproto is generated, execute the command below to generate the mean image of training data. The mean image from each input image will be 
+substracted to ensure every feature pixel has zero mean. This is a common preprocessing step in supervised machine learning.
+Command:
+<path to>/compute_image_mean -backend=lmdb <path to>/train_lmdb <path to>/mean.binaryproto
+
+B - Model definition
+One of the popular CNN models from caffe model zoo: Alexnet's customised replication bvlc_reference_caffenet model has been used here
+Reference: https://github.com/BVLC/caffe/tree/master/models/bvlc_reference_caffenet
+
+The original bvlc_reference_caffenet prototxt file(train_val.prototxt) has to be modified in the following places :
+i. path for input data and mean image as per their respective location in your system
+ii. Change the number of outputs as per the number of categories your model will be used for classifying
+
+C - Solver definition
+
+The solver is responsible for model optimization. 
+The solver file (solver.prototxt) is available in the following location:
+https://github.com/BVLC/caffe/tree/master/models/bvlc_reference_caffenet
+
+- We need to modify these hyperparameters : base_lr, lr_policy, gamma, momentum and weight_decay to finetune our model.
+- This solver computes the accuracy of the model once after a certain interval as set by the test_interval parameter in the solver.prototxt file. 
+
+D - Model training
+
+Once the model and the solver definitions are set, we can start training the model by executing the command below:
+/path/to/build/tools/caffe train --solver /path/to/solver.prototxt 2>&1 | tee /path/to/<log folder>/log_file.log
+
+The training logs will be stored in the log_file.log file
+
+We can stop the training process at anytime by pressing Ctrl+c. 
+Caffe will take a snapshot of the trained model after a certain number of iterations as defined by the 'snapshot' parameter in the solver.prototxt file, 
+and store them under log folder as defined in the command above.
+
+The snapshots will be stored with .caffemodel extension. 
+
+
+
+Reference: 
+http://caffe.berkeleyvision.org/gathered/examples/imagenet.html
+https://gist.github.com/arundasan91/b432cb011d1c45b65222d0fac5f9232c#Makefile.config
+https://medium.com/@alexrachnog/using-caffe-with-your-own-dataset-b0ade5d71233
+http://adilmoujahid.com/posts/2016/06/introduction-deep-learning-python-caffe/
